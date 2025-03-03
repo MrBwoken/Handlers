@@ -41,12 +41,13 @@ playlist = {}
 currentIndex = 1
 loopingPlaylist = false
 loopingSingle = false
+nextSong = nil  -- Global function to handle playing the next song
 
--- Play a single song
+-- Play a single song (standalone, not from a playlist)
 function mplay(filename)
     loopingSingle = false
     loopingPlaylist = false
-    
+
     local success, err = pcall(function()
         local asset = mget(filename)
         if asset then
@@ -61,6 +62,19 @@ function mplay(filename)
 
     if not success then
         warn("[ERROR] Failed to play sound: " .. tostring(err))
+    end
+end
+
+-- Helper for playing a song from a playlist (without modifying looping flags)
+function playFromPlaylist(song)
+    local asset = mget(song)
+    if asset then
+        if music.IsPlaying then
+            music:Stop()
+        end
+        music.Looped = false
+        music.SoundId = asset
+        music:Play()
     end
 end
 
@@ -84,17 +98,17 @@ function mplaylist(...)
     playlist = {...}
     currentIndex = 1
 
-    function playNext()
+    nextSong = function()
         if currentIndex <= #playlist then
-            mplay(playlist[currentIndex])
+            playFromPlaylist(playlist[currentIndex])
             currentIndex = currentIndex + 1
         else
             print("[INFO] Playlist finished")
         end
     end
 
-    music.Ended:Connect(playNext) -- Auto-play next song
-    playNext() -- Start playlist
+    music.Ended:Connect(nextSong) -- Auto-play next song when one ends
+    nextSong() -- Start the playlist
 end
 
 -- Loop a playlist indefinitely
@@ -104,20 +118,18 @@ function mloopplaylist(...)
     playlist = {...}
     currentIndex = 1
 
-    function playNext()
+    nextSong = function()
         if loopingPlaylist and #playlist > 0 then
-            mplay(playlist[currentIndex])
+            playFromPlaylist(playlist[currentIndex])
             currentIndex = currentIndex + 1
-
-            -- If we reached the end of the playlist, reset `currentIndex`
             if currentIndex > #playlist then
-                currentIndex = 1
+                currentIndex = 1  -- Loop back to the first song
             end
         end
     end
 
-    music.Ended:Connect(playNext) -- Auto-play next song
-    playNext() -- Start looping playlist
+    music.Ended:Connect(nextSong) -- Auto-play next song when one ends
+    nextSong() -- Start the looping playlist
 end
 
 -- Skip a specified number of songs
@@ -126,13 +138,16 @@ function mskip(number)
         warn("[ERROR] No playlist is active!")
         return
     end
-
-    currentIndex = currentIndex + number
-    if currentIndex > #playlist then
-        print("[INFO] Skipped to the end of the playlist.")
+    number = number or 1
+    -- Stop the current song to immediately trigger a skip
+    if music.IsPlaying then
         music:Stop()
-    else
-        mplay(playlist[currentIndex]) -- Play the new song
+    end
+    -- Call nextSong the requested number of times to advance properly
+    for i = 1, number do
+        if nextSong then
+            nextSong()
+        end
     end
 end
 
@@ -144,10 +159,11 @@ function mstop()
     print("[INFO] Music stopped.")
 end
 
+-- Usage:
 -- mdownload(url, name) for download
 -- mget(file) for getcustomasset()
--- mplay(file) for playing that file using getcustomasset()
--- mloopplay(file) for loop playing that file using getcustomasset()
--- mstop() for stop playing
--- mplaylist(song, song2, song3...) for a playlist
--- mloopplaylist(song, song2, song3...) for loop playing a playlist
+-- mplay(file) for playing a file
+-- mloopplay(file) for loop playing a file
+-- mplaylist(song1, song2, song3, ...) for a playlist
+-- mloopplaylist(song1, song2, song3, ...) for looping a playlist
+-- mskip(number) to skip a specified number of songs
