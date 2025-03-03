@@ -1,0 +1,153 @@
+SoundService = game:GetService("SoundService")
+HttpGet = game.HttpGet or game.HttpGetAsync
+
+-- Helper function to check if a file exists
+function fileExists(filename)
+    return isfile and isfile(filename)
+end
+
+-- API for downloading a file if it doesn't exist
+function mdownload(url, filename)
+    if fileExists(filename) then
+        print("[INFO] Skipping download, file already exists: " .. filename)
+        return
+    end
+
+    local success, data = pcall(function() return HttpGet(game, url, true) end)
+    if success and data then
+        writefile(filename, data)
+        print("[SUCCESS] Downloaded: " .. filename)
+    else
+        warn("[ERROR] Failed to download: " .. filename)
+    end
+end
+
+-- API for retrieving a custom asset
+function mget(filename)
+    if fileExists(filename) then
+        return getcustomasset(filename)
+    else
+        warn("[ERROR] File not found: " .. filename)
+        return nil
+    end
+end
+
+-- Sound player setup
+music = Instance.new("Sound")
+music.Parent = SoundService
+music.Looped = false
+
+playlist = {}
+currentIndex = 1
+loopingPlaylist = false
+loopingSingle = false
+
+-- Play a single song
+function mplay(filename)
+    loopingSingle = false
+    loopingPlaylist = false
+    
+    local success, err = pcall(function()
+        local asset = mget(filename)
+        if asset then
+            if music.IsPlaying then
+                music:Stop()
+            end
+            music.Looped = false
+            music.SoundId = asset
+            music:Play()
+        end
+    end)
+
+    if not success then
+        warn("[ERROR] Failed to play sound: " .. tostring(err))
+    end
+end
+
+-- Loop a single song indefinitely
+function mloopplay(filename)
+    loopingSingle = true
+    loopingPlaylist = false
+
+    local asset = mget(filename)
+    if asset then
+        music.Looped = true
+        music.SoundId = asset
+        music:Play()
+    end
+end
+
+-- Play a playlist sequentially
+function mplaylist(...)
+    loopingSingle = false
+    loopingPlaylist = false
+    playlist = {...}
+    currentIndex = 1
+
+    function playNext()
+        if currentIndex <= #playlist then
+            mplay(playlist[currentIndex])
+            currentIndex = currentIndex + 1
+        else
+            print("[INFO] Playlist finished")
+        end
+    end
+
+    music.Ended:Connect(playNext) -- Auto-play next song
+    playNext() -- Start playlist
+end
+
+-- Loop a playlist indefinitely
+function mloopplaylist(...)
+    loopingSingle = false
+    loopingPlaylist = true
+    playlist = {...}
+    currentIndex = 1
+
+    function playNext()
+        if loopingPlaylist and #playlist > 0 then
+            mplay(playlist[currentIndex])
+            currentIndex = currentIndex + 1
+
+            -- If we reached the end of the playlist, reset `currentIndex`
+            if currentIndex > #playlist then
+                currentIndex = 1
+            end
+        end
+    end
+
+    music.Ended:Connect(playNext) -- Auto-play next song
+    playNext() -- Start looping playlist
+end
+
+-- Skip a specified number of songs
+function mskip(number)
+    if #playlist == 0 then
+        warn("[ERROR] No playlist is active!")
+        return
+    end
+
+    currentIndex = currentIndex + number
+    if currentIndex > #playlist then
+        print("[INFO] Skipped to the end of the playlist.")
+        music:Stop()
+    else
+        mplay(playlist[currentIndex]) -- Play the new song
+    end
+end
+
+-- Stop the current song or looping
+function mstop()
+    music:Stop()
+    loopingSingle = false
+    loopingPlaylist = false
+    print("[INFO] Music stopped.")
+end
+
+-- mdownload(url, name) for download
+-- mget(file) for getcustomasset()
+-- mplay(file) for playing that file using getcustomasset()
+-- mloopplay(file) for loop playing that file using getcustomasset()
+-- mstop() for stop playing
+-- mplaylist(song, song2, song3...) for a playlist
+-- mloopplaylist(song, song2, song3...) for loop playing a playlist
